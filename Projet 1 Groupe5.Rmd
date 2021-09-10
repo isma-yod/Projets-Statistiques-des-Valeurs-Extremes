@@ -1,0 +1,535 @@
+---
+title: "tp1"
+author: "Yoda Ismael"
+date: "08/07/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+***Exercice 1***
+
+***1. Importation des données***
+```{r}
+data=read.csv2("C:/Users/YODA ISMAEL/Desktop/Dossier Etudes/Dossiers Master/Semestre3/Valeurs Extremes/precip_extr.csv",sep = ";", dec=".",header=T)
+head(data)
+```
+
+
+##Nous allons supprimer les lignes contenant des valeurs manquantes. Il s'agit ici de toutes les observations de l'année 2017.
+```{r}
+data <- subset(data, data$Q_RR == 0)[,c("DATE", "RR")]
+head(data)
+```
+
+
+
+## Conversion de la variable DATE en format date reconnu par R.
+```{r}
+data$DATE=as.Date(as.character(data$DATE), format = "%Y%m%d")
+head(data)
+```
+
+## Représentation graphique des données
+```{r}
+library(ggplot2)
+graph <- ggplot(data, aes(x = DATE, ymax = RR, ymin = 0)) +
+  geom_linerange(col = "lightblue") +
+  scale_x_date(date_labels = "%b-%Y") +
+  ylab("Precipiation (mm)") +
+  xlab("Date")
+
+graph
+```
+
+
+***2. Importation du package evd***
+```{r}
+library(evd)
+```
+
+
+***3. Extraction des maximums par année***
+```{r}
+library(chron)
+max_annuel <- aggregate(RR~years(DATE), FUN = max, data = data)
+head(max_annuel)
+```
+
+
+***4.Estimation d'une GEV avec les maximums annuels en utilisant la fonction fgev avec une réprésentation graphique***
+
+
+```{r}
+library(evd)
+fitted=fgev(max_annuel$RR)
+par(mfrow = c(2, 2))
+plot(fitted)
+```
+Sur la base du tracé Quantile Plot, l'ajustement semble être bon.
+Nous constatons également que la densité de probabilité a une queue de distribution lourde. 
+
+5.Donnons un intervale de confiance des paramètres de la GEV $\mu$, $\sigma$ et $\zeta$
+
+```{r}
+# Interval de confiance en utilisant la normalité asymptotique
+inter_c <- cbind(low = fitted$par - qnorm(0.975) * fitted$std.err,
+            up = fitted$par + qnorm(0.975) * fitted$std.err)
+inter_c
+```
+
+***6. Comparons l'intervalle de confiance ci-dessus avec celui obtenue par*** 
+
+```{r}
+plot(profile(fitted))
+```
+
+La principale différence entre ces deux types d'intervalles de confiance est que celle fournis par "plot(profile(fitted))" est asymétrique. Elle sera donc préferé au premier.
+
+***7. Passons l'argument shape=0 à la fonction fgev***
+```{r}
+(fitted1 <- fgev(max_annuel$RR, shape = 0))
+```
+
+Nous pouvons dire qu'il s'agit d'une distribution de Gumbel car cette dernière admet le paramètre $\zeta$=0. Pour vérifier si ce modèle est approprié, nous allons la comparer avec le premier à travers un test anova.
+
+
+```{r}
+anova(fitted,fitted1)
+```
+
+Nous constatons à travers le test anova que le modèle "fitted1" est meilleur que le modèle "fitted" car l'hypothèse nulle selon laquelle le modèle "fitted1" a une plus petite variance que le modele "fitted" ne peut pas etre rejetter.
+
+***8. Donnons une estimation des niveaux de retours sur 2 ans, 10 ans et 100 ans***
+
+```{r}
+niv_retour <- c(2, 10, 100)
+print(qgev(1 - 1/niv_retour, fitted1$par[1], fitted1$par[2], fitted1$par[3]))
+```
+
+
+***9. Donnons un intervalle de confiance basé sur la vraissemblance du profil pour le niveau de retour sur 10 ans et commentons***
+
+```{r}
+plot(profile(fgev(max_annuel$RR, prob = 1 / 10), "quantile"))
+```
+
+L'intervalle de confiance pour le niveau de retour est très asymétrique comme il est habituelle pour les extrêmes.
+
+***10. ***
+
+
+***11.Essayons d'ajuster un modèle GEV non stationnaire,par exemple, avec une tendance linéaire pour le paramètre de localisation µ***
+
+Pour permettre une tendance linéaire en µ dans le temps, ydat devra être une matrice avec juste une seule colonne, où les valeurs de la colonne sont un compteur de temps de 1 à 70 (comme nous avons 70 maxima annuels). Ainsi,
+
+```{r}
+ti=matrix(ncol=1,nrow=70)
+ti[,1]=seq(1,70,1)
+```
+
+Maintenant, pour ajuster le GEV pour permettre une tendance linéaire en µ, nous tapons:
+
+```{r}
+library(ismev)
+fitted2=gev.fit(max_annuel$RR,ydat=ti,mul=1)
+```
+
+
+***Exercice 2 ***
+
+Dans cet exercice, nous effectuerons une analyse des valeurs extrêmes en utilisant les dépassements de seuil pour Yahoo log-retours.
+
+***1. Installons et chargeons d'abord le quantmod et obtenons les prix quotidiens de apple en appelant getSymbols ( "AAPL" ).***
+
+```{r}
+library(quantmod)
+library(tidyquant)
+getSymbols("AAPL",src="yahoo")
+```
+
+```{r}
+head(AAPL)
+```
+
+***2. Tracons la série chronologique brute ainsi que les rendements logarithmiques négatifs (en utilisant les prix de clôture).***
+
+```{r}
+cloture <- data.frame(Date = index(AAPL),
+                       Close = AAPL$AAPL.Close)
+
+rend_log <- data.frame(Date = index(AAPL),
+                         rend_log = -diff(log(AAPL$AAPL.Close)))
+```
+
+Tracé de la série brute à l'aide de ggplot
+```{r}
+library(ggplot2)
+ggplot(cloture, aes(x = Date, y = AAPL.Close)) +
+  geom_line() +
+  ylab("Prix de cloture") +
+  geom_smooth()
+```
+La série des cours de clôture montre une tendance linéaire. Elle n'est donc pas stationnaire et la théorie des valeurs extreme standard qui suppose une série stationnaire, ne pourrait pas marcher avec elle. Nous allons éffectuer un test de stationnarité pour appuyer nos analyses.
+
+Effectuons pour ce faire, le test de stationnarité de Dickey Fuller. L'hypothèse nulle du test est que la série n'est pas stationnaire.
+
+```{r}
+library(tseries)
+adf.test(AAPL$AAPL.Close)
+```
+D'aprés les resultats du test la p-value est supérieure a tous les seuils conventionnellle .Notre série n'est donc pas stationnaire.
+
+
+Tracé de la série des rendements logarithmiques négatifs
+```{r}
+ggplot(rend_log, aes(x = Date, y = AAPL.Close)) +
+  geom_line() +
+  ylab("rendements logarithmiques négatif") +
+  geom_smooth()
+```
+En observant la série des rendements logarithmiques négatifs, nous constatons que la moyenne et la variance semble etre constant dans le temps. Nous pouvons dire que cette série est stationnaire. 
+
+
+Effectuons à nouveau le test de stationnarité de Dickey Fuller pour vérifier la stationnarité de la série des rendements logarithmiques négatifs.
+```{r}
+library(tseries)
+adf.test(na.omit(rend_log$AAPL.Close))
+```
+D'aprés les résultats du test, la p-value est inférieure a tous les seuils conventionnels .Notre série des rendements logarithmiques négatifs  est donc stationnaire. C'est cette série qui sera utilisé pour estimer notre modéle. Nous allons par ailleurs vérifié s'il n'existe pas une autocorrélation de notre série en tracant l'autocorrélogramme partiel(ACF).
+
+
+```{r}
+acf(na.omit(rend_log$AAPL.Close))
+```
+
+La majorité des pics n'étant pas significatifs, alors nous ne pouvons pas soupconner la présence d'une autocorrélation.
+
+***3. À l'aide des fonctions mrlplot et tcpot, identifions les valeurs de seuils sensibles afin que les dépassements puisse raisonnablement être considéré comme GPD***
+
+
+
+
+```{r}
+mrlplot(rend_log$AAPL.Close,c(-0.01,0.15))
+```
+
+
+```{r}
+par(mfrow = c(1, 2))
+tcplot(rend_log$AAPL.Close, c(-0.01, 0.15),std.err=F)
+```
+
+```{r}
+#Sur la base des tracés précédents, un seuil autour de 0,05 devrait être bon.
+thresh=0.05
+```
+
+
+***4.Suivons les mêmes étapes que dans l'exercice précédent***
+
+Estimation d'un GPD en considérant le seuil maximal=0,05
+
+```{r}
+(fit <- fpot(rend_log$AAPL.Close, thresh, npp = 250))#npp' signifie "Nombre d'observations par période". Ici, nous                                                               mettons 'npp = 250' car il y a (environ) 250 jours ouvrables                                                               dans une année
+```
+
+```{r}
+#Réprésentation graphique de l'estimation 
+par(mfrow = c(2,2))
+plot(fit)
+```
+
+Selon le Quantile plot,le modéle semble etre bien ajusté.
+
+```{r}
+# Interval de confiance à 95% en utilisant la normalité asymptotique
+interv <- cbind(low = fit$par - qnorm(0.975) * fit$std.err,
+            up = fit$par + qnorm(0.975) * fit$std.err)
+interv
+```
+
+```{r}
+#Intervalles de confiance à 95 % basés sur la vraisemblance profilée
+plot(profile(fit))
+```
+Nous choisirons l'interval de confiance basé sur la vraisemblance profilée à cause de sa forte asymétrie.
+
+Estimation d'un second modèle en considérant $\zeta=0$ (modèle exponentiel)
+```{r}
+fit1 <- fpot(rend_log$AAPL.Close, thresh, shape = 0, npp = 250)
+fit1
+```
+
+##Comparaison des deux modèles avec le test d'anova
+```{r}
+anova(fit, fit1)
+```
+Nous constatons à travers le test anova que le modèle "fit1" est meilleur que le modèle "fit".
+
+Nous constatons à travers le test anova que le modèle "fit1" est meilleur que le modèle "fit" car l'hypothèse nulle selon laquelle le modèle "fit1" a une plus petite variance que le modele "fit" ne peut pas etre rejetter.
+
+
+## estimation des niveaux de retour sur 2 ans, 10 ans et 100 ans
+```{r}
+niv_ret <- c(2, 10, 100)
+ret <- mean(rend_log$AAPL.Close > thresh, na.rm = TRUE)
+qgpd(1 - 1 / (ret * 250 * niv_ret), thresh, fit1$par["scale"], fit1$par["shape"])
+```
+
+***5. Commentons ce qui se passe lorsque vous passez l'option mper = 10 à la fonction fpot***
+
+
+```{r}
+fit3=fpot(rend_log$AAPL.Close, thresh, mper = 10, npp = 250)
+fit3
+```
+
+
+```{r}
+par(mfrow=c(2,2))
+plot(profile(fit3))
+
+```
+
+En passant l'option mper = 10 à la fonction fpot,nous constatons que la fonction estime uniquement la parametre shape et le niveau de retour. Le parametre scale semble avoir pris la valeur 0 par defaut.
+
+Nous pouvons donc conclure que lorsque l'option mper= m est une valeur positive, alors le modèle de Pareto généralisé est reparamétré de manière à ce que les paramètres soient rlevel et shape, où rlevel est le niveau de retour m et shape le paramètre $\zeta$ du modèle.
+
+
+***Exercice 3***
+
+Jetons un œil à https://www.ecad.eu et choisissons notre ensemble de données (environnementales) préféré. Effectuons une analyse des données extrêmes.
+
+***Nous allons etudier les températures maximum extremes de la ville de Clermont Ferrand en France. Nous disposons d'une base de données de nos observation qui s'étend de 2020/10/01 à 2021/05/31. Nous n'avons pas pu trouver une base de données plus longue. Nous allons essayer de déterminer la distributin des valeurs maximales mensuelles et d'éffectuer une GEV.***
+
+***Importation des donnees***
+```{r}
+df=read.csv2("C:/Users/YODA ISMAEL/Desktop/Dossier Etudes/Dossiers Master/Semestre3/Valeurs Extremes/temp_max.csv",sep = ",", dec=".",header=T)
+head(df)
+```
+
+***Transformation de la variable DATE en format date reconnu par R***
+```{r}
+df$DATE=as.Date(as.character(df$DATE), format = "%Y%m%d")
+```
+
+##Nous allons supprimer les lignes contenant des valeurs manquantes. Il s'agit ici de toutes les observations de l'année 2017.
+```{r}
+df <- subset(df, df$Q_TX == 0)[,c("DATE", "TX")]
+head(df)
+```
+
+
+***Représentation graphique des températures maximums journalières***
+```{r}
+library(ggplot2)
+graph <- ggplot(df, aes(x = DATE, ymax = TX, ymin = -36)) +
+  geom_linerange(col = "lightblue") +
+  scale_x_date(date_labels = "%b-%Y") +
+  ylab("Precipiation (mm)") +
+  xlab("Date")
+
+graph
+```
+
+***Determinons la distributions des maximums mensuelles***
+
+```{r}
+library(chron)## pour obtenir la fonction years
+max_mois <- aggregate(TX~months(DATE), FUN = max, data = df)
+max_mois
+```
+
+
+```{r}
+library(evd)
+fittede=fgev(max_mois$TX)
+par(mfrow = c(2, 2))
+plot(fittede)
+```
+Sur la base du tracé Quantile plot, l'ajustement semble être bon.
+
+
+Les valeurs des estimateurs des parametres
+```{r}
+fittede$param
+```
+Nous constatons que le pramètre $\zeta$ est inferieur à zéro ce qui est la caractéristique d'une distribution de Weibull.
+
+
+Donnons un intervale de confiance des paramètres de la GEV $\mu$, $\sigma$ et $\zeta$
+```{r}
+# Interval de confiance en utilisant la normalité asymptotique
+inter_c <- cbind(low = fittede$par - qnorm(0.975) * fittede$std.err,
+            up = fittede$par + qnorm(0.975) * fittede$std.err)
+inter_c
+```
+
+
+```{r}
+#l'intervalle de confiance basé sur la vraisemblance profilée
+plot(profile(fittede))
+```
+Nous pouvons maintenir les memes conclusions que dans nos analyses précedentes sur le fait que cet intervalle de confiance fournis de meilleures résultats que celle utilisant la normalité asymptotique et cela, du au fait de son asymétrie.
+
+Considérons que notre distribution des extrèmes est celle de Gumbel c'est à dire avec $\zeta=0$.
+
+```{r}
+(fittede1 <- fgev(max_mois$TX, shape = 0))
+```
+
+***Comparons les deux modèles à travers un test anova***
+```{r}
+anova(fittede, fittede1)
+```
+D'apres le test anova, on ne peut pas rejetter l'hypothèse nulle selon laquelle le modèle "fittede1" a une plus petite variance que le modele "fittede". Le modèle "fittede1" est donc meilleure que "fittede".
+
+
+Estimation du niveau de retour pour 2, 10 et 50 ans avec le meilleure modèle.
+```{r}
+niv_retour <- c(2, 10, 50)
+print(qgev(1 - 1/niv_retour, fittede1$par[1],fittede1$par[2], fittede1$par[3]))
+```
+
+
+Donnons un intervalle de confiance de la prévision. Nous utiliserons l'intervalle de confiance basé sur la vraisemblance profilée car il fourni de meilleures résultats.
+```{r}
+par(mfrow=c(1,3))
+plot(profile(fgev(max_mois$TX, prob = 1 / 2), "quantile"))
+plot(profile(fgev(max_mois$TX, prob = 1 / 10), "quantile"))
+plot(profile(fgev(max_mois$TX, prob = 1 / 50), "quantile"))
+```
+
+
+***Nous allons étudier à présent une base de donnée financière (QQQ) issue de la Google finance. Les actions de QQQ comprennent 100 des plus grandes sociétés du Nasdaq, telles qu'Apple, Amazon, Google et Facebook. Nous disposons d'une base de données de nos observation qui s'étend de 2007-01-03 à ce jour. Nous allons essayer de déterminer la distributin des valeurs maximales annuelle et d'éffectuer une GPD.***
+
+
+Imporattion des données
+```{r}
+library(quantmod)
+getSymbols(Symbols = "QQQ", auto_assign = TRUE)
+head(QQQ)
+```
+
+
+Séries chronologique des niveaux des prix de clotures et celle des rendements logarithmiques négatifs.
+```{r}
+cloture <- data.frame(Date = index(QQQ),
+                       Close = QQQ$QQQ.Close)
+rend_negatif <- data.frame(Date = index(QQQ),
+                         rend_negatif = -diff(log(QQQ$QQQ.Close)))
+```
+
+
+
+Répresentation graphiques de la série chronologique des prix à la cloture avec ggplot2
+```{r}
+ggplot(cloture, aes(x = Date, y = QQQ.Close)) +
+  geom_line() +
+  ylab("Closing price") +
+  geom_smooth()
+```
+
+Au vu du tracé de la série, nous constatons la présence d'une tendance croissante. nous pouvons dire qu'elle n'est pas stationnaire. Nous allons vérifier la stationnarité avec le test de Dickey Fuller. L'hypothèse nulle du test que la série n'est pas stationnaire.
+
+```{r}
+library(tseries)
+adf.test(na.omit(QQQ$QQQ.Close))
+```
+Les résultats du test ci-dessus montrent que la p-value est supérieure à tout les seuils conventionnels. La série brute des prix à la cloture n'est donc pas stationnaire.
+
+Les méthodes standards de la théorie des valeurs extremes qui suppose que la série est stationnaire, ne peut donc pas marché dans ce cas de figure. Nous allons étudier la stationnarité de la série des rendements logarithmiques négatifs.
+
+Répresentation graphiques de la série chronologique des rendements logarithmiques négatifs.
+```{r}
+library(ggplot2)
+ggplot(rend_negatif, aes(x = Date, y = QQQ.Close)) +
+  geom_line() +
+  ylab("log-retour négatif") +
+  geom_smooth()
+```
+
+En observant la série, nous constatons que la moyenne et la variance semblent etre constants dans le temps. La série semble stationnaire. Nous allons vérifier avec un nouveau test des Dickey Fuller. 
+
+```{r}
+library(tseries)
+adf.test(na.omit(rend_negatif$QQQ.Close))
+```
+D'aprés les résultats du test, la p-value est inférieure a tous les seuils conventionnels .Notre série des rendements logarithmiques négatifs  est donc stationnaire. C'est cette série qui sera utilisé pour estimer notre modéle. Nous allons par ailleurs vérifié s'il n'existe pas une autocorrélation de notre série en tracant l'autocorrélogramme partiel(ACF).
+
+```{r}
+acf(na.omit(rend_negatif$QQQ.Close))
+```
+
+La majorité des pics n'étant pas significatifs, alors nous ne pouvons pas soupconner la présence d'une autocorrélation.
+
+
+Identifions les valeurs de seuils sensibles afin que les dépassements puisse raisonnablement être considéré comme GPD.Nous allons utilisé pour cela les fonctions "mrlplot" et "tcplot"
+
+
+```{r}
+mrlplot(rend_negatif$QQQ.Close, c(-0.01, 0.10))
+```
+
+```{r}
+par(mfrow = c(1, 2))
+tcplot(rend_negatif$QQQ.Close, c(-0.01, 0.10),std.err=F)
+```
+
+
+Sur la base des tracés précédents, un seuil autour de 0,05 devrait être bon.
+```{r}
+thresh1=0.04
+```
+
+
+Estimation du modèle
+```{r}
+(model <- fpot(rend_negatif$QQQ.Close, thresh1, npp = 250))
+```
+
+Graphiques du modéle estimé
+```{r}
+par(mfrow = c(2,2))
+plot(model)
+```
+
+D'après le Quantile plot, nous pouvons dire que le modéle semble bon.
+
+
+L'intervalle de confiance basé sur la normalité asymptotique
+```{r}
+confint(model)
+```
+
+L'interval de confiance basé sur la vraisemblance profilée
+```{r}
+plot(profile(model))
+```
+L'interval de confiance basé sur la vraisemblance profilée sera préferé à celui basé sur la normalité asymptotique à cause de sa forte asymétrie.
+
+
+Estimons un modèle exponnentiel($\zeta=0$) pour la comparer à notre modèle précédent. 
+```{r}
+(model1 <- fpot(rend_negatif$QQQ.Close, thresh1, shape = 0, npp = 250))
+```
+
+
+Effectuons un test anova pour comparer les deux modèles. L'hypothèse nulle du test est que le second modéle(model1) est meilleur que le premier(model)
+```{r}
+anova(model, model1)
+```
+Au seuil de 5%, nous rejettons l'hypothése nulle. Le premier modéle(model) est donc préféré au second(model1)
+
+
+
+Estimation des niveau de retours pour 2,10 et 100 ans avec le meilleur modéle.
+```{r}
+vec_ret <- c(2, 10, 100)
+moy <- mean(rend_negatif$QQQ.Close > thresh1, na.rm = TRUE)
+qgpd(1 - 1 / (moy * 250 * vec_ret), thresh1, model$par["scale"], model$par["shape"])
+```
+
+
+

@@ -1,0 +1,402 @@
+---
+title: "Untitled"
+author: "Yoda Ismael"
+date: "25/08/2021"
+output:
+  word_document: default
+  html_document: default
+---
+
+***Exercices***
+
+***1...***
+
+***Importation des données***
+```{r}
+data=read.csv2("C:/Users/YODA ISMAEL/Desktop/Dossier Etudes/Dossiers Master/Semestre3/Valeurs Extremes/d.csco9199.csv",sep = ";", dec=".",header=F,col.names = "log return")
+head(data)
+```
+
+***Nos données étant en pourcentage, nous allons les diviser par cent(100) pour la suite de notre travail***
+
+```{r}
+data=data/100
+```
+
+
+***Création d'un vecteur date contenant les jours de 1991 à 1999***
+```{r}
+DATE=seq(from = as.Date("1991-01-01"), to = as.Date("1999-12-31"), by = 1)
+DATE=DATE[1:2275]
+```
+
+***Nous constatons que la taille des données(2275), ne permet pas d'avoir une étendu de données allant 1991 à 1999. Pour que nos données couvre cette étendue, il nous aurait fallu au moins 3285 observations. Avec 2275 observations, nos s'étendent du 01 Janvier 1991 au 24 Mars 1997. C'est donc en considérant cette étendue des données que nous avons fait le travail.***
+
+***Concaténation des vecteur DATE et data(qui représente nos données)***
+```{r}
+df=cbind(DATE,data)
+head(df)
+```
+
+
+## Représentation graphique des données
+```{r}
+library(ggplot2)
+graph <- ggplot(df, aes(x = DATE, ymax = log.return, ymin = 0)) +
+  geom_linerange(col = "lightblue") +
+  scale_x_date(date_labels = "%b-%Y") +
+  ylab("Precipiation (mm)") +
+  xlab("Date")
+
+graph
+```
+Notre série semble stationnaire. Effectuons un test de stationnarité pour vérifier.
+
+Nous allons utiliser le test de stationnarité de Dickey Fuller pour vérifier la stationnarité de la série des rendements logarithmiques négatifs.
+```{r}
+library(tseries)
+adf.test(df$log.return)
+```
+D'aprés les résultats du test, la p-value est inférieure a tous les seuils conventionnels.Notre série des rendements logarithmiques négatifs  est donc stationnaire.
+
+Verifions si il n'existe pas une autocorrélation de la série
+```{r}
+acf(df$log.return)
+```
+La majorités des pics ne sont pas significatifs. Il n'existe donc pas d'autocorrélation de notre série.
+
+***Calculons la Value-at-Risk (VaR) de notre position, avec 95% intervalles de confiance si possible, pour le jour de bourse suivant en utilisant les probabilités p=0,01 et p=0,005 et les méthodes suivantes: ***
+
+***(a).Supposons que les retours logarithmiques soient normalement distribués***
+
+Avec p=0,01
+```{r}
+mu=mean(df$log.return) # Moyenne des observations
+
+ecart_type=sqrt(var(df$log.return)) # Ecart type des observations
+
+z=qnorm((1-0.01),mean=mu,sd=ecart_type) # Quantile de la loi normal de probabilité (1-p)=0,99. Ceci correspond à la VaR_0.99. Cette valeur peut etre utilisée pour calculer la mesure de risque du placement financier
+
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+Le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 68960,71$ sous une probabilité de 0,99.
+
+
+Avec p=0,005
+```{r}
+mu=mean(df$log.return) # Moyenne des observations
+
+ecart_type=sqrt(var(df$log.return)) # Ecart type des observations
+
+z=qnorm((1-0.005),mean=mu,sd=ecart_type) # Quantile de la loi normal de probabilité (1-p)=0,99. Ceci correspond à la VaR_0.99. Cette valeur peut etre utilisée pour calculer la mesure de risque du placement financier
+
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+Le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 76080,87$ sous une probabilité de 0,995.
+
+
+***(b).Utilisons un modèle GARCH(1,1) avec une distribution gaussienne conditionnelle***
+
+Estimation du modèle GARCH(1,1)
+```{r}
+library(fGarch)
+mod1=garchFit(~garch(1,1),data=df$log.return,trace=F) # Estimation du modèle
+predict(mod1,3)# Estimation des parametres du modèle GARCH(1,1) 
+```
+
+
+calcul de la VaR avec p=0.01
+```{r}
+z=qnorm((1-0.01),mean=0.003278439,sd=0.02094808) # VaR_0.99
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+En supposant un modèle GARCH(1,1) avec une distribution gaussienne conditionnelle,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 52010,96$ sous une probabilité de 0,99.
+
+
+
+calcul de la VaR avec p=0.005
+```{r}
+z=qnorm((1-0.005),mean=0.003278439,sd=0.02094808) # VaR_0.995
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+En supposant toujours un modèle GARCH(1,1) avec une distribution gaussienne conditionnelle,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 57237,12$ sous une probabilité de 0,995.
+
+
+***(c).Utilisons un modèle GARCH(1,1) avec une distribution conditionnelle Student-t,où vous estimez les degrés de liberté.***
+
+Estimation du modèle GARCH(1,1)
+```{r}
+library(fGarch)
+mod2=garchFit(~garch(1,1),data=df$log.return,trace=F,cond.dist="std") # Estimation du modèle
+mod2
+```
+
+
+```{r}
+predict(mod2,3)# Estimation des parametres du modèle GARCH(1,1)
+```
+
+
+calcul de la VaR avec p=0.01 et avec un dégré de liberté égal à 9,664
+```{r}
+z=0.003173322+qt(0.99,9.664)*0.02160053 # VaR_0.99
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+En supposant un modèle GARCH(1,1) avec une distribution conditionnelle Student-t et un dégré de liberté estimé de 9,664 ,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 63257,27$ sous une probabilité de 0,99.
+
+
+
+calcul de la VaR avec p=0.005 et avec un dégré de liberté égal à 9.664
+```{r}
+z=0.003173322+qt(0.995,9.664)*0.02160053 # VaR_0.995
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+En supposant toujours un modèle GARCH(1,1) avec une distribution conditionnelle Student-t et un dégré de liberté estimé de 9,664 ,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 72168,05$ sous une probabilité de 0,995.
+
+
+
+***(d).Utilisons le quantile d'échantillon inconditionnel des retours de log (simulation historique)***
+
+calcul de la VaR avec p=0.01
+```{r}
+z=quantile(df$log.return,(1-0.01)) # VaR_0.99
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+En utilisant le quantile d'échantillon inconditionnel des retours de log ,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 72577,8$ sous une probabilité de 0,99.
+
+
+calcul de la VaR avec p=0.005
+```{r}
+z=quantile(df$log.return,(1-0.005)) # VaR_0.995
+VaR=z*1000000 # Value at Risk du placement financier
+z
+VaR
+```
+En utilisant le quantile d'échantillon inconditionnel des retours de log ,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 81177,9$ sous une probabilité de 0,995.
+
+***(e).Utilisons la théorie des valeurs extrêmes pour le maximum du retour journalier négatif. Utilisons des blocs trimestriels pour estimer la distribution et l'utilisation du GEV l'équation (7.26) de Tsay pour calculer la VaR.***
+
+
+Nous Estimerons du modèle GEV en utilisant 47 blocs car nous avons 2275 jour ce qui équivaut à 190 mois donc à 48 trimestres. Nous allons utiliser la library "fExtremes" pour le calcul de nos maximums et la library "evd" pour la modélisation de nos valeurs extremes.
+
+Calcul des maximums de chaque blocks
+```{r}
+library(fExtremes)
+max_trimestre=blockMaxima(as.timeSeries(df$log.return), block = 48)
+head(max_trimestre)
+```
+
+Estimation du modéle GEV représentation graphique
+```{r}
+library(evd)
+fit0=fgev(max_trimestre$max.SS.1) # Estimation du modéle
+par(mfrow=c(2,2))
+plot(fit0)
+```
+En observant le Quantile Plot, le modéle semble globalement bien ajusté
+
+
+Estimation des paramètres $\mu$, $\sigma$ et $\zeta$ du modéle GEV
+```{r}
+fit0$param  # Parametres du modèle
+```
+
+
+Supposons qu'il s'agit d'une distribution de Gumbel c'est à dire que $\zeta=0$
+```{r}
+fit1=fgev(max_trimestre$max.SS.1,shape=0)
+fit1$param
+```
+
+Test anova pour comparer les deux modéles. L'hypothése nulle est que le modéle "fit1" est meilleur que "fit0"
+```{r}
+anova(fit0,fit1)
+```
+La p-value du test supérieure à tous les seuils conventionnels. On ne peux donc pas rejetter l'hypothése nulle. Le modéle "fit1" sera préféré au modéle "fit0". Nous somme donc face a une distribution de Gumbel.
+
+Calcul de la VAR avec l'équation de Tsay avec p=0.01 et avec $\zeta=0$
+```{r}
+z=mean(max_trimestre$max.SS.1)-sd(max_trimestre$max.SS.1)*log(-48*(log(1-0.01))) # VaR_0.99
+VaR=z*1000000 # Value at Risk du placement financier de 1million de dollars
+z
+VaR
+```
+En utilisans des blocs trimestriels pour estimer la distribution avec un modèle GEV et l'équation de Tsay pour calculer la VaR,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 83332,26$ sous une probabilité de 0,99.
+
+
+Calcul de la VAR avec l'équation de Tsay avec p=0.005 et avec $\zeta=0$
+```{r}
+z=mean(max_trimestre$max.SS.1)-sd(max_trimestre$max.SS.1)*log(-48*(log(1-0.005))) # VaR_0.99
+VaR=z*1000000 # Value at Risk du placement financier de 1million de dollars
+z
+VaR
+```
+En utilisans des blocs trimestriels pour estimer la distribution avec un modèle GEV et l'équation de Tsay pour calculer la VaR,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à 99038,44$ sous une probabilité de 0,995.
+
+***Utilisons la théorie des valeurs extrêmes pour les dépassements de seuils (pics au-dessus des seuils) sur la base des rendements journaliers négatifs. Utilisons les tracés d'excès de moyenne empirique pour déterminer la valeur seuil appropriée pour la distribution de Pareto généralisée (GPD) puis ajustons le modèle par maximum de vraisemblance. Calculons la VaR et Intervalles de confiance à 95 % en utilisant la fonction riskmesures. Tracons l'intervalle de confiance à 95% en utilisant les fonctions tailplot and gdp.q. Enfin,examinons la sensibilité des estimations de VaR aux variations du seuil avec la fonction quant.***
+
+
+Les tracés d'excès de moyenne empirique.
+```{r}
+library(evir)
+meplot(df$log.return)
+title(main="Log retour négatif journalier")
+```
+D'après le tracé ci dessus, la valeur seuil appropriée pour la distribution de Pareto généralisée (GPD) peut etre estimé à 0,05.
+
+Estimation du modèle par maximum de vraissemblance
+```{r}
+model=pot(df$log.return,threshold=0.05)
+model
+```
+
+
+
+Calcul de la VaR et intervalles de confiance à 95 % en utilisant la fonction riskmesures et avec p=0.01 et p=0.005
+```{r}
+VaR_0.99_0.995=riskmeasures(model,c((1-0.01),(1-0.005))) # Ceci représente les quantiles ou (VaR_0.99 et VaR_0.995)
+
+VaR_0.99_0.995
+```
+
+Calcul des VaR du placement financier de 1millions de dollars de Cisco
+```{r}
+VaR1=1000000*0.07238935 # VaR du placement financier Cisco avec p=0.01
+VaR2=1000000*0.08318298  # VaR du placement financier Cisco avec p=0.005
+VaR1
+VaR2
+```
+En utilisans la théorie des valeurs extrêmes pour les dépassements de seuils (peaks over threshold) sur la base des rendements journaliers négatifs,le placement financier de Cisco évalué à 1 millions de dollars, encoure un risque maximale de perte journalière évalué à respectivement 72389,35$ et 83182,98 sous les probabilité de 0,99 et 0,995.
+
+Représentation graphique des intervalles de confiance la distribution de Pareto généralisée (GPD) en utilisant les fonctions tailplot.
+```{r}
+tailplot(model)
+```
+
+
+
+examinons la sensibilité des estimations de VaR aux variations du seuil avec la fonction quant
+```{r}
+quant(df$log.return)
+```
+Nous constatons a travers le graphique ci-dessus que la VaR est sensible à la variation du seuil car une évolution du seuil entraine également celle de la VaR.
+
+
+***2.Combinons GARCH et EVT. Cet exercice vous guide tout au long du processus de combiner GARCH avec EVT selon les lignes décrites dans McNeil et Frey(2000), « Estimation of Tail-Related Risk Measures for Heteroskedastic Financial Time Series: An Extreme Value Approach », Journal of Empirical Finance. Voir aussi le document de cours de Bingcheng Yan. Pour cet exercice, utilisons les données sur Cisco log retour de l'exercice précédent et supposons que nous détenons une position longue de Action Cisco évaluée à 1 million de dollars***
+
+
+***(a).Ajustons un modèle AR(1)-GARCH(1,1), avec des erreurs gaussiennes, aux log retours négatifs de l'action Cisco***
+
+Estimation du modéle AR(1)-GARCH(1,1)
+
+```{r}
+library(fGarch)
+garch=garchFit(~arma(1,0)+garch(1,1),data=df$log.return,trace=F) # Estimation du modèle
+garch
+```
+
+
+Valeurs prédites de mu_chapeau et sigma_chapeau
+```{r}
+predict(garch,3)
+```
+
+```{r}
+mu_chapeau=0.003499251
+sigma_chapeau=0.02087056
+```
+
+***(b)Ajustons un GPD aux résidus standardisés estimés Zt.***
+
+Recupérons d'abord des résidus standardisés Zt=ˆεt/ˆ σt du modèle
+```{r}
+Zt=residuals(garch,standardize=T)
+```
+
+Déterminons le seuil qu'il faut considérer pour l'estimation du modèle
+```{r}
+library(evir)
+meplot(Zt)
+title(main="Résidus standardisés")
+```
+D'après le tracé ci dessus, la valeur seuil appropriée pour la distribution de Pareto généralisée (GPD) peut etre estimé à 2.
+
+Estimation du modèle GPD avec un seuil de 2
+```{r}
+model3=pot(Zt,threshold=2)
+model3
+```
+
+
+***(c).En  utilisant  le  modèle  GPD,  estimons  le  quantile  zq  et  la  moyenne conditionnelle E[Z||Z > zq] pour q = 0.01, 0.005.***
+
+estimations du quantile zq  pour q = 0.01 et q= 0.005  
+```{r}
+z_0.01_0.005=riskmeasures(model3,c((1-0.01),(1-0.005))) # Ceci représente les quantiles ou                                                           z_0.01 et z_0.005
+z_0.01_0.005
+```
+
+
+estimations de la  moyenne conditionnelle E[Z||Z > zq] pour q = 0.01 et q= 0.005
+```{r}
+print(mean(Zt| Zt>2.399458)) # E[Z||Z > z_0.01]
+print(mean(Zt| Zt>2.713122)) # E[Z||Z > z_0.005]
+```
+
+
+
+***(d) A l'aide des estimations de zq et  de E[Z||Z > zq], calculons les estimations du quantile et de la moyenne conditionnelle de Xt***
+
+```{r}
+xt_plusun_0.01=mu_chapeau+sigma_chapeau*2.399458 #  xt+1_chapeau,0.01 
+xt_plusun_0.005=mu_chapeau+sigma_chapeau*2.713122 # xt+1_chapeau,0.005
+E_condit_xt_plusun_0.01=mu_chapeau+sigma_chapeau*0.9995604 #E[Xt+1|Xt+1>xt+1,0.01]_chapeau
+E_condit_xt_plusun_0.005=mu_chapeau+sigma_chapeau*0.9995604#E[Xt+1|Xt+1>xt+1,0.005]_chapeau
+xt_plusun_0.01
+xt_plusun_0.005
+E_condit_xt_plusun_0.01
+E_condit_xt_plusun_0.005
+```
+
+***(e)  A  partir  des  quantiles  et  des  moyennes  conditionnelles  calculés précédemment, calculez les  VaRq  et  ESq  pour une position longue de 1 million de dollars sur l'action Cisco***
+
+```{r}
+VaR_0.01=(mu_chapeau+sigma_chapeau*(xt_plusun_0.01))*1000000 # VaR calculée en utilisant                                                             le quantile x_t+1_chapeau,0.01
+
+VaR_0.005=(mu_chapeau+sigma_chapeau*(xt_plusun_0.005))*1000000 #VaR calculée en utilisant                                                            le quantile x_t+1_chapeau,0.005
+
+
+VaR_0.01.= mu_chapeau+sigma_chapeau*(E_condit_xt_plusun_0.01)*1000000 #VaR calculée en                         utilisant l'espérance conditionnelle E[Xt+1|Xt+1>xt+1,0.01]_chapeau
+
+VaR_0.005.= mu_chapeau+sigma_chapeau*(E_condit_xt_plusun_0.005)*1000000 #VaR calculée en                        utilisant l'espérance conditionnelle E[Xt+1|Xt+1>xt+1,0.005]_chapeau
+
+VaR_0.01
+VaR_0.005
+
+VaR_0.01.
+VaR_0.005.
+
+```
+
+***(f) Comparez les résultats avec ceux de l'exercice 1.***
+
+En comparaison aux résultats trouvés dans l'exercice 1, nous pouvons dire les modèles utilisés dans l'exercice 1 donent des valeurs assez elévées de la VaR. Nous pouvons donc penser que ces modèles conduisent à une surévaluation de la VaR réelle alors que le modèle combinant les ARMA-GARCH et EVT, donnent des valeurs beaucoup plus réalistes.
+
+
+
+
+
